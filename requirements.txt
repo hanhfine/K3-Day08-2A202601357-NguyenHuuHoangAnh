@@ -31,7 +31,7 @@ streamlit>=1.35.0
 # Group project - Evaluation
 ragas==0.1.21
 datasets>=2.14.0
-langchain-openai>=0.1.0
+langchain-openai>=0.1.0,<0.2.0
 
 # Testing (dung de cham diem bai ca nhan)
 pytest>=7.0.0
