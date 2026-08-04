@@ -46,8 +46,8 @@ CHUNK_OVERLAP = 100     # 100 ký tự overlap: tránh mất thông tin tại ra
 CHUNKING_METHOD = "recursive"  # RecursiveCharacterTextSplitter: an toàn, phổ biến, phù hợp với markdown
 
 # Chọn embedding model và giải thích
-EMBEDDING_MODEL = "BAAI/bge-m3"  # Multilingual (1024 dim), hỗ trợ cả tiếng Việt lẫn tiếng Anh
-EMBEDDING_DIM = 1024
+EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"  # Multilingual (384 dim), nhẹ (~470MB) hơn nhiều so với bge-m3 (~2.2GB), vẫn hỗ trợ tiếng Việt tốt
+EMBEDDING_DIM = 384
 
 # Chọn vector store
 VECTOR_STORE = "chromadb"  # Local persistent, không cần Docker, dễ tích hợp
