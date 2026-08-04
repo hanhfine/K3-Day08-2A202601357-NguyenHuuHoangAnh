@@ -29,11 +29,13 @@ def setup_directory():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# TODO: Điền danh sách URL bài viết cần crawl
+# Danh sách 5 URL từ RMIT Vietnam cần crawl
 ARTICLE_URLS = [
-    # Ví dụ (trang công khai RMIT Vietnam):
-    # "https://www.rmit.edu.vn/libraryvn/...",
-    # "https://www.rmit.edu.vn/students/...",
+    "https://www.rmit.edu.vn/students/support/it-support",
+    "https://www.rmit.edu.vn/students/support/student-connect",
+    "https://www.rmit.edu.vn/students/my-studies/new-students/enrol-as-a-new-student",
+    "https://www.rmit.edu.vn/student-life/life-and-work-opportunities/career-ready-hub",
+    "https://www.rmit.edu.vn/study-at-rmit/international-students/international-student-support-services",
 ]
 
 
@@ -50,17 +52,30 @@ async def crawl_article(url: str) -> dict:
         }
     """
     from crawl4ai import AsyncWebCrawler
+    from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig
 
-    # TODO: Implement crawling logic
-    # async with AsyncWebCrawler() as crawler:
-    #     result = await crawler.arun(url=url)
-    #     return {
-    #         "url": url,
-    #         "title": result.metadata.get("title", "Unknown"),
-    #         "date_crawled": datetime.now().isoformat(),
-    #         "content_markdown": result.markdown,
-    #     }
-    raise NotImplementedError("Implement crawl_article")
+    browser_cfg = BrowserConfig(headless=True, verbose=False)
+    run_cfg = CrawlerRunConfig(
+        word_count_threshold=10,       # bỏ qua block quá ngắn (nav, footer)
+        excluded_tags=["nav", "footer", "header", "script", "style"],
+        exclude_external_links=True,
+    )
+
+    async with AsyncWebCrawler(config=browser_cfg) as crawler:
+        result = await crawler.arun(url=url, config=run_cfg)
+
+        title = (
+            result.metadata.get("title", "")
+            if result.metadata
+            else ""
+        ) or url.rstrip("/").split("/")[-1]
+
+        return {
+            "url": url,
+            "title": title,
+            "date_crawled": datetime.now().isoformat(),
+            "content_markdown": result.markdown or "",
+        }
 
 
 async def crawl_all():
@@ -69,13 +84,18 @@ async def crawl_all():
 
     for i, url in enumerate(ARTICLE_URLS, 1):
         print(f"[{i}/{len(ARTICLE_URLS)}] Crawling: {url}")
-        article = await crawl_article(url)
+        try:
+            article = await crawl_article(url)
 
-        # Lưu file JSON
-        filename = f"article_{i:02d}.json"
-        filepath = DATA_DIR / filename
-        filepath.write_text(json.dumps(article, ensure_ascii=False, indent=2))
-        print(f"  ✓ Saved: {filepath}")
+            # Dùng slug từ URL làm tên file cho dễ nhận biết
+            slug = url.rstrip("/").split("/")[-1][:40]
+            filename = f"article_{i:02d}_{slug}.json"
+            filepath = DATA_DIR / filename
+            filepath.write_text(json.dumps(article, ensure_ascii=False, indent=2), encoding="utf-8")
+            chars = len(article.get("content_markdown", ""))
+            print(f"  ✓ Saved: {filepath}  ({chars} chars)")
+        except Exception as e:
+            print(f"  ✗ Lỗi khi crawl {url}: {e}")
 
 
 if __name__ == "__main__":
