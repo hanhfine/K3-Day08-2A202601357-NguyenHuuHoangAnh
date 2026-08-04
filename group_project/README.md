@@ -72,19 +72,55 @@ Xem code mẫu (DeepEval/RAGAS/TruLens) chi tiết trong `README.md` gốc mục
 ## Kiến Trúc Hệ Thống
 
 ```
-[Vẽ diagram kiến trúc ở đây]
+data/landing/{legal,news}/  (PDF, DOCX, JSON)
+        │  Task 1-2: thu thập
+        ▼
+data/standardized/*.md      (Markdown chuẩn hoá)
+        │  Task 3: convert
+        ▼
+┌───────────────────────────────────────────────────────────┐
+│ Task 4: Chunking (800/100) + Embedding                     │
+│ (paraphrase-multilingual-MiniLM-L12-v2, 384-dim)            │
+│              → ChromaDB (chroma_db/)                       │
+└───────────────────────────────────────────────────────────┘
+        │
+        ▼
+   User query (app.py / eval_pipeline.py)
+        │
+        ├──► Task 5: Semantic Search (Cosine, dense) ─┐
+        │                                              ├─► Task 7: RRF Merge
+        └──► Task 6: Lexical Search (BM25, sparse) ────┘         (k=60)
+                                                              │
+                                                              ▼
+                                          Task 9: retrieve()
+                                          - Rerank (RRF) → top_k
+                                          - Nếu best cosine < 0.35
+                                            → Task 8: PageIndex Fallback
+                                              (vectorless, structural)
+                                                              │
+                                                              ▼
+                              Task 10: generate_with_citation()
+                              - reorder_for_llm (front + back[::-1])
+                              - format_context (kèm source)
+                              - LLM (OpenRouter/OpenAI) → answer + citation
+                                                              │
+                                                              ▼
+                        app.py (Streamlit Chatbot) — hiển thị answer + sources
+                        group_project/evaluation/eval_pipeline.py — RAGAS A/B eval
 ```
 
 ---
 
 ## Phân Công Công Việc
 
-| Thành viên            | MSSV        | Nhiệm vụ | Trạng thái |
+| Thành viên            | MSSV        | Nhiệm vụ (Role, Phương Án A) | Trạng thái |
 | ----------------------- | ----------- | ---------- | ------------ |
-| Nguyễn Cao Nam         | 2A202601377 | role 3     |              |
-| Nguyễn Phương Nam    | 2A202601952 | role 2     |              |
-| Lương Trung Chiến    | 2A202601391 | role 4     |              |
-| Nguyễn Hữu Hoàng Anh | 2A202601357 | role 1     |              |
+| Nguyễn Cao Nam         | 2A202601377 | Role 3 — Frontend & Chatbot Dev: Task 8 (PageIndex), `app.py` Streamlit, Task 10 (Generation) | ✅ Hoàn thành |
+| Nguyễn Phương Nam    | 2A202601952 | Role 2 — Data & Retrieval Specialist: Task 1-3 (thu thập & convert dữ liệu), Task 4 (ChromaDB), Task 5 (Semantic Search), Task 7 (RRF Rerank), Task 9 (Retrieval Pipeline) | ✅ Hoàn thành |
+| Lương Trung Chiến    | 2A202601391 | Role 4 — Evaluation & QA: Task 6 (BM25), `golden_dataset.json`, `eval_pipeline.py` (RAGAS), `results.md` | ✅ Hoàn thành |
+| Nguyễn Hữu Hoàng Anh | 2A202601357 | Role 1 — Team Leader & RAG Architect: điều phối tiến độ, kiểm tra tham số chunking/RRF, tổng hợp `supervisor.py` & pipeline | ✅ Hoàn thành |
+
+**Ghi chú tiến độ:** `pytest tests/test_individual.py` đạt **35/35 passed** (CP4). CP5: `app.py` chạy được (đã test `streamlit run`, kết nối `generate_with_citation()`), `eval_pipeline.py` đã chạy RAGAS A/B thật (17 câu hỏi, 2 configs `hybrid_rerank` vs `dense_only`) và xuất `results.md`.
 
 ---
 
