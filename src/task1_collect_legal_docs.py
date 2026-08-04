@@ -1,54 +1,124 @@
-"""
-Task 1 — Thu thập văn bản chính sách/quy định dịch vụ đại học.
+"""Task 1 - Thu thap van ban chinh sach cua RMIT Vietnam.
 
-Hướng dẫn:
-    1. Tìm tối thiểu 3 văn bản chính sách (PDF/DOCX) từ trang công khai của một trường đại học.
-    2. Tải về và lưu vào data/landing/legal/
-    3. Đặt tên file rõ ràng, không dấu, mô tả đúng nội dung.
+Script tai ba tai lieu PDF cong khai ve hoc phi, hoc bong va cho o vao
+``data/landing/legal``. Chay tu thu muc goc cua du an bang lenh:
 
-Gợi ý nguồn (ví dụ trang công khai RMIT Vietnam — rmit.edu.vn):
-    - https://www.rmit.edu.vn/study-at-rmit/tuition-fees
-    - https://www.rmit.edu.vn/study-at-rmit/scholarships/...
-    - https://www.rmit.edu.vn/students/my-studies/fees-and-payments
-
-Gợi ý văn bản (chủ đề dịch vụ đại học):
-    - Học phí & phương thức thanh toán (Tuition Fees)
-    - Chính sách học bổng (Scholarship eligibility)
-    - Quy định ký túc xá / hỗ trợ chỗ ở (Accommodation Services)
-    - Hướng dẫn đăng ký học phần qua cổng thông tin sinh viên (Course Registration)
-
-Lưu ý: một số trang trường (vd VinUni, Fulbright) chặn bot crawler mặc định (HTTP 403) —
-không phải lỗi của bạn, đó là cấu hình WAF/Cloudflare phía server. Đổi sang trang khác
-thay vì cố vượt qua, và chỉ dùng nguồn công khai/được phép chia sẻ.
+    python src/task1_collect_legal_docs.py
 """
 
 from pathlib import Path
+from typing import Final
 
-DATA_DIR = Path(__file__).parent.parent / "data" / "landing" / "legal"
+import requests
 
 
-def setup_directory():
-    """Tạo thư mục data/landing/legal/ nếu chưa có."""
+DATA_DIR: Final = Path(__file__).resolve().parent.parent / "data" / "landing" / "legal"
+REQUEST_TIMEOUT: Final = 60
+MIN_FILE_SIZE: Final = 1024
+
+# Cac URL deu tro den tai lieu PDF cong khai tren website chinh thuc cua
+# RMIT Vietnam. Ten file khong dau va mo ta ro noi dung tai lieu.
+DOCUMENTS: Final = (
+    {
+        "topic": "Hoc phi va cac khoan phi phu thu",
+        "url": (
+            "https://www.rmit.edu.vn/assets/vn/en/assets-for-production/"
+            "documents/pdfs/study-at-rmit/tuition-fees/"
+            "student-fees-and-charges-guide-06-2026.pdf"
+        ),
+        "filename": "student-fees-and-charges-guide-rmit-2026.pdf",
+    },
+    {
+        "topic": "Dieu khoan va dieu kien hoc bong",
+        "url": (
+            "https://www.rmit.edu.vn/content/dam/rmit/vn/en/"
+            "assets-for-production/documents/pdfs/study-at-rmit/"
+            "scholarships/english-pdf/"
+            "rmit-university-vietnam-scholarship-terms-and-conditions.pdf"
+        ),
+        "filename": "scholarship-terms-and-conditions-rmit.pdf",
+    },
+    {
+        "topic": "Huong dan cho o cho sinh vien quoc te",
+        "url": (
+            "https://www.rmit.edu.vn/content/dam/rmit/vn/en/"
+            "assets-for-production/documents/pdfs/students/accommodation/"
+            "accommodation-advice-for-international-students-in-vietnam.pdf"
+        ),
+        "filename": "accommodation-advice-rmit-vietnam.pdf",
+    },
+)
+
+
+def setup_directory() -> None:
+    """Tao thu muc dich neu thu muc chua ton tai."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"✓ Thư mục đã sẵn sàng: {DATA_DIR}")
+    print(f"[OK] Thu muc da san sang: {DATA_DIR}")
 
 
-# TODO: Tải file PDF/DOCX về DATA_DIR
-# Có thể tải thủ công hoặc viết script download nếu có direct link.
-#
-# Ví dụ nếu có direct link:
-#
-# import requests
-#
-# def download_file(url: str, filename: str):
-#     response = requests.get(url)
-#     filepath = DATA_DIR / filename
-#     filepath.write_bytes(response.content)
-#     print(f"✓ Đã tải: {filepath}")
-#
-# Nếu trang là HTML thuần (không phải PDF sẵn), có thể convert nội dung text
-# thành PDF đơn giản bằng thư viện fpdf2 (đã có trong requirements.txt).
+def is_valid_pdf(filepath: Path) -> bool:
+    """Kiem tra kich thuoc toi thieu va chu ky dau file PDF."""
+    if not filepath.is_file() or filepath.stat().st_size <= MIN_FILE_SIZE:
+        return False
+
+    with filepath.open("rb") as file:
+        return file.read(5) == b"%PDF-"
+
+
+def download_file(url: str, filename: str) -> Path:
+    """Tai mot PDF, kiem tra noi dung va luu an toan vao DATA_DIR.
+
+    File duoc tai vao duoi ``.part`` truoc. Chi sau khi qua kiem tra PDF,
+    file tam moi duoc doi ten thanh file dich de tranh giu lai file loi.
+    """
+    destination = DATA_DIR / filename
+    temporary = destination.with_suffix(destination.suffix + ".part")
+
+    if is_valid_pdf(destination):
+        print(f"[SKIP] File da ton tai va hop le: {destination.name}")
+        return destination
+
+    headers = {"User-Agent": "Mozilla/5.0 (RAG-Lab-Document-Collector/1.0)"}
+
+    try:
+        with requests.get(
+            url,
+            headers=headers,
+            timeout=REQUEST_TIMEOUT,
+            stream=True,
+        ) as response:
+            response.raise_for_status()
+            with temporary.open("wb") as file:
+                for block in response.iter_content(chunk_size=64 * 1024):
+                    if block:
+                        file.write(block)
+
+        if not is_valid_pdf(temporary):
+            raise ValueError(f"Noi dung tai ve khong phai PDF hop le: {url}")
+
+        temporary.replace(destination)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+
+    print(f"[OK] Da tai {destination.name} ({destination.stat().st_size:,} bytes)")
+    return destination
+
+
+def collect_legal_documents() -> list[Path]:
+    """Tai toan bo tai lieu cau hinh trong DOCUMENTS."""
+    setup_directory()
+    downloaded_files = []
+
+    for document in DOCUMENTS:
+        print(f"\nDang xu ly: {document['topic']}")
+        downloaded_files.append(
+            download_file(document["url"], document["filename"])
+        )
+
+    print(f"\nHoan thanh Task 1: {len(downloaded_files)} tai lieu hop le.")
+    return downloaded_files
 
 
 if __name__ == "__main__":
-    setup_directory()
+    collect_legal_documents()
