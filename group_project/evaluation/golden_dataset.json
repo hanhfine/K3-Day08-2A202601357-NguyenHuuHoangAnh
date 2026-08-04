@@ -13,5 +13,75 @@
     "question": "Trường có cung cấp ký túc xá trong khuôn viên không?",
     "expected_answer": "Không — trường không cung cấp chỗ ở trong khuôn viên, nhưng có đội ngũ hỗ trợ sinh viên tìm chỗ ở gần trường.",
     "expected_context": "Trang Accommodation Services"
+  },
+  {
+    "question": "Nghĩa vụ tài chính (financial liability) của sinh viên bắt đầu từ thời điểm nào?",
+    "expected_answer": "Từ thời điểm sinh viên chấp nhận thư mời nhập học, thực hiện đăng ký môn học, hoặc có bất kỳ hoạt động tương tác nào theo Tài liệu Hướng dẫn Học phí.",
+    "expected_context": "student-fees-and-charges-guide-rmit-2026.md, mục 2.1 Creation of Financial Liability"
+  },
+  {
+    "question": "Nghĩa vụ tài chính của sinh viên chỉ chấm dứt khi nào?",
+    "expected_answer": "Chỉ khi sinh viên rút môn học hoặc ngành học đúng thời hạn quy định, thông qua đơn đã được duyệt (Enrolment Variation, Leave of Absence, Cancellation of Enrolment) hoặc hệ thống đăng ký môn trực tuyến (OES).",
+    "expected_context": "student-fees-and-charges-guide-rmit-2026.md, mục 2.2 Cessation of Financial Liability"
+  },
+  {
+    "question": "Học bổng tại RMIT Vietnam có thể chuyển đổi thành tiền mặt không?",
+    "expected_answer": "Không, học bổng không được chuyển đổi thành tiền mặt hoặc chuyển nhượng dưới bất kỳ hình thức nào.",
+    "expected_context": "scholarship-terms-and-conditions-rmit.md, điều khoản 5"
+  },
+  {
+    "question": "Sinh viên nhận học bổng cần duy trì tối thiểu bao nhiêu tín chỉ mỗi học kỳ?",
+    "expected_answer": "Tối thiểu 36 tín chỉ/học kỳ đối với bậc đại học, 24 tín chỉ/học kỳ đối với bậc sau đại học (24 tín chỉ đối với RMIT Vietnam Opportunity Scholarship).",
+    "expected_context": "scholarship-terms-and-conditions-rmit.md, điều khoản 11"
+  },
+  {
+    "question": "Một sinh viên có thể nhận tối đa bao nhiêu học bổng học phí cùng lúc?",
+    "expected_answer": "Tối đa một (1) học bổng học phí tại một thời điểm.",
+    "expected_context": "scholarship-terms-and-conditions-rmit.md, điều khoản 10"
+  },
+  {
+    "question": "Nếu sinh viên có học bổng nhưng rớt một môn học thì học phí môn đó ai chi trả?",
+    "expected_answer": "Sinh viên phải tự chi trả học phí cho môn học bị rớt, trừ một số trường hợp ngoại lệ tùy loại học bổng hoặc theo quyết định của RMIT.",
+    "expected_context": "scholarship-terms-and-conditions-rmit.md, điều khoản 2"
+  },
+  {
+    "question": "Sinh viên quốc tế thường phải đặt cọc bao nhiêu khi thuê nhà ở Việt Nam?",
+    "expected_answer": "Thường đặt cọc 1-2 tháng tiền thuê (tùy nhà/thời hạn hợp đồng), đôi khi cộng thêm 1 tháng tiền thuê trả trước.",
+    "expected_context": "accommodation-advice-rmit-vietnam.md, mục Deposit & Advance Payment"
+  },
+  {
+    "question": "Thời hạn hợp đồng thuê nhà tiêu chuẩn tại Việt Nam là bao lâu?",
+    "expected_answer": "Thường từ 6-12 tháng, có thể thương lượng ngắn hơn (3-4 tháng) nếu sinh viên chỉ ở trong thời gian ngắn.",
+    "expected_context": "accommodation-advice-rmit-vietnam.md, mục Lease Duration"
+  },
+  {
+    "question": "Sinh viên quốc tế có bắt buộc đăng ký tạm trú với công an phường không?",
+    "expected_answer": "Có, tất cả sinh viên quốc tế bắt buộc phải đăng ký cư trú với công an phường địa phương sau khi chuyển vào ở; không đăng ký có thể ảnh hưởng đến việc gia hạn visa.",
+    "expected_context": "accommodation-advice-rmit-vietnam.md, mục Residence Registration"
+  },
+  {
+    "question": "RMIT ID (tên đăng nhập) của sinh viên được đặt theo quy tắc nào?",
+    "expected_answer": "Là chữ cái 's' theo sau là mã số sinh viên (student number), ví dụ mã số 4012345 thì RMIT ID là s4012345.",
+    "expected_context": "article_01_it-support.md, mục RMIT ID and Password"
+  },
+  {
+    "question": "Student Connect hỗ trợ sinh viên những vấn đề gì?",
+    "expected_answer": "Thông tin đăng ký môn học, môn học/chương trình, học phí và tài chính, kết quả và tốt nghiệp, thời khóa biểu, đặt lịch hẹn, chương trình trao đổi quốc tế, và các dịch vụ sinh viên khác.",
+    "expected_context": "article_02_student-connect.md, mục Student Connect"
+  },
+  {
+    "question": "Sinh viên mới cần đóng khoản đặt cọc học phí không hoàn lại là bao nhiêu để xác nhận nhập học?",
+    "expected_answer": "20.000.000 VND (VND 20,000,000), khoản đặt cọc này không được hoàn lại.",
+    "expected_context": "article_03_enrol-as-a-new-student.md, Step 1: Accept your offer"
+  },
+  {
+    "question": "Career Ready Hub cung cấp những dịch vụ hỗ trợ nghề nghiệp nào cho sinh viên?",
+    "expected_answer": "Cơ hội việc làm/thực tập, hỗ trợ CV và phỏng vấn, tư vấn định hướng nghề nghiệp 1:1, các chương trình kỹ năng nghề nghiệp, hội chợ nghề nghiệp, và mentoring theo nhóm.",
+    "expected_context": "article_04_career-ready-hub.md, mục Our services"
+  },
+  {
+    "question": "RMIT Vietnam có dịch vụ đón sân bay miễn phí cho sinh viên quốc tế mới không?",
+    "expected_answer": "Có, RMIT cung cấp dịch vụ đón sân bay miễn phí khi sinh viên quốc tế mới đến Việt Nam.",
+    "expected_context": "article_05_international-student-support-services.md, mục Free airport pick-up service"
   }
 ]

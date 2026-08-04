@@ -20,16 +20,77 @@ chừng, thử giảm xuống subset 5 câu để chạy kịp trong buổi, ho�
 """
 
 import json
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 GOLDEN_DATASET_PATH = Path(__file__).parent / "golden_dataset.json"
 RESULTS_PATH = Path(__file__).parent / "results.md"
+
+TOP_K = 5
+
+# 2 configs so sánh A/B: Config A dùng full pipeline Task 9 (hybrid + RRF + rerank),
+# Config B chỉ dùng Semantic Search đơn thuần (bỏ BM25/RRF/rerank) để đo lợi ích thật
+# sự của phần hybrid mang lại.
+CONFIG_DESCRIPTIONS = {
+    "hybrid_rerank": "Hybrid Search (Semantic + BM25 qua RRF) + Rerank + PageIndex fallback (Task 9 đầy đủ)",
+    "dense_only": "Dense-only: chỉ Semantic Search (Cosine Similarity), không BM25/RRF/rerank",
+}
 
 
 def load_golden_dataset() -> list[dict]:
     """Load golden dataset từ JSON file."""
     with open(GOLDEN_DATASET_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _retrieve_hybrid(query: str, top_k: int) -> list[dict]:
+    from src.task9_retrieval_pipeline import retrieve
+    return retrieve(query, top_k=top_k, use_reranking=True)
+
+
+def _retrieve_dense_only(query: str, top_k: int) -> list[dict]:
+    from src.task5_semantic_search import semantic_search
+    return semantic_search(query, top_k=top_k)
+
+
+RETRIEVAL_FNS = {
+    "hybrid_rerank": _retrieve_hybrid,
+    "dense_only": _retrieve_dense_only,
+}
+
+
+def _generate_for_config(query: str, top_k: int, retrieval_fn) -> dict:
+    """
+    Sinh câu trả lời cho 1 config cụ thể, tái dùng reorder/format/LLM client
+    từ Task 10 nhưng đổi bước retrieval để so sánh A/B công bằng.
+    """
+    from src.task10_generation import (
+        reorder_for_llm, format_context, _get_llm_client,
+        SYSTEM_PROMPT, TEMPERATURE, TOP_P,
+    )
+
+    chunks = retrieval_fn(query, top_k)
+    if not chunks:
+        return {"answer": "Tôi không thể xác minh thông tin này từ nguồn hiện có", "sources": []}
+
+    reordered = reorder_for_llm(chunks)
+    context = format_context(reordered)
+    user_message = f"Context:\n{context}\n\n---\n\nQuestion: {query}"
+
+    client, model = _get_llm_client()
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ],
+        temperature=TEMPERATURE,
+        top_p=TOP_P,
+    )
+    return {"answer": response.choices[0].message.content, "sources": chunks}
 
 
 # =============================================================================
@@ -80,39 +141,38 @@ def evaluate_with_deepeval(rag_pipeline, golden_dataset: list[dict]) -> dict:
 # Option 2: RAGAS
 # =============================================================================
 
-def evaluate_with_ragas(rag_pipeline, golden_dataset: list[dict]) -> dict:
+def evaluate_with_ragas(eval_data: dict) -> dict:
     """
-    Evaluate RAG pipeline sử dụng RAGAS.
+    Evaluate 1 bộ generations (question/answer/contexts/ground_truth) bằng RAGAS.
+
+    Khác với chữ ký gợi ý ban đầu (rag_pipeline, golden_dataset): hàm này nhận thẳng
+    eval_data đã sinh sẵn, để compare_configs() có thể tái sử dụng cho nhiều config
+    retrieval khác nhau (hybrid vs dense-only) mà không cần 1 "rag_pipeline" cố định.
 
     pip install ragas
     """
-    # TODO: Implement
-    #
-    # from ragas import evaluate
-    # from ragas.metrics import (
-    #     faithfulness,
-    #     answer_relevancy,
-    #     context_recall,
-    #     context_precision,
-    # )
-    # from datasets import Dataset
-    #
-    # eval_data = {"question": [], "answer": [], "contexts": [], "ground_truth": []}
-    #
-    # for item in golden_dataset:
-    #     result = rag_pipeline.generate_with_citation(item["question"])
-    #     eval_data["question"].append(item["question"])
-    #     eval_data["answer"].append(result["answer"])
-    #     eval_data["contexts"].append([c["content"] for c in result["sources"]])
-    #     eval_data["ground_truth"].append(item["expected_answer"])
-    #
-    # dataset = Dataset.from_dict(eval_data)
-    # result = evaluate(
-    #     dataset,
-    #     metrics=[faithfulness, answer_relevancy, context_recall, context_precision],
-    # )
-    # return result.to_pandas()
-    raise NotImplementedError("Implement evaluate_with_ragas")
+    from ragas import evaluate
+    from ragas.metrics import (
+        faithfulness,
+        answer_relevancy,
+        context_recall,
+        context_precision,
+    )
+    from datasets import Dataset
+
+    dataset = Dataset.from_dict(eval_data)
+    result = evaluate(
+        dataset,
+        metrics=[faithfulness, answer_relevancy, context_recall, context_precision],
+    )
+    df = result.to_pandas()
+    return {
+        "faithfulness": float(df["faithfulness"].mean()),
+        "answer_relevancy": float(df["answer_relevancy"].mean()),
+        "context_recall": float(df["context_recall"].mean()),
+        "context_precision": float(df["context_precision"].mean()),
+        "per_question": df,
+    }
 
 
 # =============================================================================
@@ -155,67 +215,124 @@ def evaluate_with_trulens(rag_pipeline, golden_dataset: list[dict]) -> dict:
 # A/B Comparison
 # =============================================================================
 
-def compare_configs(rag_pipeline, golden_dataset: list[dict]):
+def compare_configs(golden_dataset: list[dict], top_k: int = TOP_K) -> dict:
     """
-    So sánh A/B giữa ít nhất 2 configs.
+    So sánh A/B giữa 2 configs:
+    - Config A "hybrid_rerank": Semantic + BM25 qua RRF + Rerank (Task 9 đầy đủ)
+    - Config B "dense_only": chỉ Semantic Search, không BM25/RRF/rerank
 
-    Gợi ý configs để so sánh:
-    - Config A: hybrid search + reranking
-    - Config B: dense-only (không reranking)
-    - Config C: hybrid search + PageIndex fallback
+    Trả về dict: config_name -> kết quả evaluate_with_ragas() (bao gồm cả điểm
+    trung bình lẫn per_question DataFrame để export_results() dùng phân tích
+    worst performers).
     """
-    # TODO: Implement A/B comparison
-    #
-    # configs = {
-    #     "hybrid_rerank": {"use_reranking": True, "alpha": 0.5},
-    #     "dense_only": {"use_reranking": False, "alpha": 1.0},
-    # }
-    #
-    # results = {}
-    # for config_name, params in configs.items():
-    #     # Run eval with this config
-    #     ...
-    #     results[config_name] = scores
-    #
-    # return results
-    raise NotImplementedError("Implement compare_configs")
+    results = {}
+    for config_name, retrieval_fn in RETRIEVAL_FNS.items():
+        print(f"\n=== Running config: {config_name} ===")
+        eval_data = {"question": [], "answer": [], "contexts": [], "ground_truth": []}
+        for item in golden_dataset:
+            print(f"  - {item['question'][:60]}...")
+            gen = _generate_for_config(item["question"], top_k, retrieval_fn)
+            contexts = [c["content"] for c in gen["sources"]]
+            eval_data["question"].append(item["question"])
+            eval_data["answer"].append(gen["answer"])
+            eval_data["contexts"].append(contexts if contexts else ["(no context retrieved)"])
+            eval_data["ground_truth"].append(item["expected_answer"])
+
+        results[config_name] = evaluate_with_ragas(eval_data)
+    return results
 
 
 # =============================================================================
 # Export Results
 # =============================================================================
 
-def export_results(results: dict, comparison: dict):
-    """Export evaluation results to results.md"""
-    # TODO: Format and write results
-    #
-    # content = "# RAG Evaluation Results\n\n"
-    # content += "## Overall Scores\n\n"
-    # content += "| Metric | Score |\n|--------|-------|\n"
-    # ...
-    # content += "\n## A/B Comparison\n\n"
-    # ...
-    # content += "\n## Worst Performers\n\n"
-    # ...
-    # content += "\n## Recommendations\n\n"
-    # ...
-    #
-    # RESULTS_PATH.write_text(content, encoding="utf-8")
-    raise NotImplementedError("Implement export_results")
+def export_results(comparison: dict) -> None:
+    """Export A/B comparison results (từ compare_configs) ra results.md"""
+    config_names = list(comparison.keys())
+    a, b = config_names[0], config_names[1]
+    metrics = ["faithfulness", "answer_relevancy", "context_recall", "context_precision"]
+    metric_labels = {
+        "faithfulness": "Faithfulness",
+        "answer_relevancy": "Answer Relevance",
+        "context_recall": "Context Recall",
+        "context_precision": "Context Precision",
+    }
+
+    lines = ["# RAG Evaluation Results\n"]
+    lines.append("## Framework sử dụng\n")
+    lines.append("RAGAS (`pip install ragas`) — LLM judge: OpenAI `gpt-4o-mini` (qua `OPENAI_API_KEY`).\n")
+    lines.append("---\n")
+    lines.append("## Overall Scores\n")
+    lines.append(f"| Metric | Config A ({a}) | Config B ({b}) | Δ |")
+    lines.append("|--------|---------------------------|----------------------|---|")
+
+    scores_a, scores_b = [], []
+    for m in metrics:
+        va, vb = comparison[a][m], comparison[b][m]
+        scores_a.append(va)
+        scores_b.append(vb)
+        lines.append(f"| {metric_labels[m]} | {va:.3f} | {vb:.3f} | {va - vb:+.3f} |")
+    mean_a, mean_b = sum(scores_a) / len(scores_a), sum(scores_b) / len(scores_b)
+    lines.append(f"| **Average** | **{mean_a:.3f}** | **{mean_b:.3f}** | **{mean_a - mean_b:+.3f}** |")
+    lines.append("\n---\n")
+
+    lines.append("## A/B Comparison Analysis\n")
+    lines.append(f"**Config A ({a}):**")
+    lines.append(f"> {CONFIG_DESCRIPTIONS[a]}\n")
+    lines.append(f"**Config B ({b}):**")
+    lines.append(f"> {CONFIG_DESCRIPTIONS[b]}\n")
+    winner = a if mean_a >= mean_b else b
+    reason = (
+        "Kết hợp BM25 + RRF + rerank giúp bù các trường hợp Semantic Search bỏ sót từ khoá/số hiệu chính xác "
+        "(vd tên chính sách, số tiền, mã điều khoản)."
+        if winner == a
+        else "Dense-only đơn giản hơn nhưng vẫn đủ tốt cho corpus nhỏ này; phần hybrid thêm vào chưa mang lại "
+        "lợi ích tương xứng với độ phức tạp."
+    )
+    lines.append("**Kết luận:**")
+    lines.append(
+        f"> Config **{winner}** đạt điểm trung bình cao hơn ({max(mean_a, mean_b):.3f} so với "
+        f"{min(mean_a, mean_b):.3f}). {reason}"
+    )
+    lines.append("\n---\n")
+
+    df_a = comparison[a]["per_question"]
+    df_a = df_a.assign(avg_score=df_a[metrics].mean(axis=1)).sort_values("avg_score").head(3)
+    lines.append("## Worst Performers (Bottom 3, theo Config A)\n")
+    lines.append("| # | Question | Faithfulness | Relevance | Recall | Failure Stage | Root Cause |")
+    lines.append("|---|----------|-------------|-----------|--------|---------------|------------|")
+    for i, (_, row) in enumerate(df_a.iterrows(), 1):
+        stage = "Retrieval" if row["context_recall"] < 0.5 else "Generation"
+        cause = (
+            "Corpus thiếu evidence liên quan hoặc threshold fallback chưa kích hoạt đúng lúc"
+            if stage == "Retrieval"
+            else "LLM diễn giải context chưa sát hoặc trích dẫn nguồn chưa đầy đủ"
+        )
+        q = str(row["question"])[:50]
+        lines.append(
+            f"| {i} | {q}... | {row['faithfulness']:.2f} | {row['answer_relevancy']:.2f} | "
+            f"{row['context_recall']:.2f} | {stage} | {cause} |"
+        )
+    lines.append("\n---\n")
+
+    lines.append("## Recommendations\n")
+    lines.append("### Cải tiến 1")
+    lines.append("**Action:** Mở rộng corpus (thêm tài liệu legal/news) cho các chủ đề có Context Recall thấp.")
+    lines.append("**Expected impact:** Tăng Context Recall & Faithfulness vì retriever có nhiều evidence hơn để chọn.\n")
+    lines.append("### Cải tiến 2")
+    lines.append("**Action:** Calibrate lại `SCORE_THRESHOLD` ở Task 9 dựa trên phân phối điểm cosine thực tế khi corpus mở rộng.")
+    lines.append("**Expected impact:** Kích hoạt PageIndex fallback đúng lúc hơn, giảm câu trả lời rác khi hybrid search yếu.\n")
+    lines.append("### Cải tiến 3")
+    lines.append("**Action:** Thử embedding model mạnh hơn (vd `BAAI/bge-m3`) nếu hạ tầng cho phép tải model lớn hơn.")
+    lines.append("**Expected impact:** Tăng độ chính xác Semantic Search, đặc biệt với câu hỏi diễn đạt khác từ ngữ trong tài liệu gốc.\n")
+
+    RESULTS_PATH.write_text("\n".join(lines), encoding="utf-8")
+    print(f"\n✓ Exported results to {RESULTS_PATH}")
 
 
 if __name__ == "__main__":
     golden_dataset = load_golden_dataset()
     print(f"Loaded {len(golden_dataset)} test cases")
 
-    # TODO: Import your RAG pipeline
-    # from src.task10_generation import generate_with_citation
-    #
-    # Chọn 1 framework:
-    # results = evaluate_with_deepeval(pipeline, golden_dataset)
-    # results = evaluate_with_ragas(pipeline, golden_dataset)
-    # results = evaluate_with_trulens(pipeline, golden_dataset)
-    #
-    # comparison = compare_configs(pipeline, golden_dataset)
-    # export_results(results, comparison)
-    print("⚠ Implement evaluation logic and run again!")
+    comparison = compare_configs(golden_dataset, top_k=TOP_K)
+    export_results(comparison)
